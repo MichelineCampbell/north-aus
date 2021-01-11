@@ -11,41 +11,59 @@
 # packages ----------------------------------------------------------------
 
 library(ncdf4)
-library(rnaturalearth)
-library(rnaturalearthdata)
+# library(rnaturalearth)
+# library(rnaturalearthdata)
 library(raster) # package for raster manipulation
 library(rgdal) # package for geospatial analysis
-library(ggplot2)
+# library(ggplot2)
 library(rasterVis)
+library(lubridate)
 
+files=list.files("D:/north_AUS_DATA/netcdf_data",full.names = TRUE, pattern="nc")
 
+for (j in seq_along(files)){
+  
+  outname <- stringr::str_remove_all(files[j], "D:/north_AUS_DATA/netcdf_data/")
+  #setting wd containing netcdf files in the loop
 
-nc_data <- nc_open("D:/north_AUS_DATA/netcdf_data/1889.daily_rain.nc")
+  b<-brick(files[j])
+  
+  nc<-nc_open(files[j])
+  
+  #variable
+  varname<-names(nc[['var']])[[1]]
+  varunits <- ncatt_get(nc,varname,"units")[[2]]
+  
+  lon<-ncvar_get(nc,"lon")
+  
+  lat<-ncvar_get(nc,"lat", verbose = F)
+  
+  time<-ncvar_get(nc, "time")
+  
+  tunits <- ncatt_get(nc, "time", "units")[[2]]
+  
+  dlname <- ncatt_get(nc, varname,"long_name")[[2]]
+  
+  nc_close(nc)
+  
+  #assigning a crs
+  proj4string(b)<-"+proj=longlat +datum=WGS84 +ellps=WGS84 +towgs84=0,0,0"
+  
+  #setting time as.Date 
+  tm<-ymd(getZ(b))
+  
+  #setting time to rasterBrick
+  b<-setZ(b, tm)
+  
+  # subsetting
+  cropextent <- extent(c( 113, 153,-26, -10))
+  
+  b2 <- crop(b, cropextent)
 
-
-lon <- ncvar_get(nc_data, "lon")
-lat <- ncvar_get(nc_data, "lat")
-t <- ncvar_get(nc_data, "time")
-tdate <- as.Date(t, origin=c('1889-01-01')) ## convert time (days since 18000101 to date)
-
-rain.array <- ncvar_get(nc_data, "daily_rain") #extract temp anomaly data
-fillvalue <- ncatt_get(nc_data, "daily_rain", "_FillValue") 
-nc_close(nc_data)
-rm(nc_data)
-
-rain.array[rain.array == fillvalue$value] <- NA ## replace fill value with NA
-
-r_brick <- brick(rain.array, xmn=min(lat), xmx=max(lat), ymn=min(lon), ymx=max(lon), crs=CRS("+proj=longlat +datum=WGS84 +no_defs"))
-rm(rain.array)
-r_brick <- t(r_brick)
-r_brick <- flip(r_brick, direction = "y")
-
-
-print(r_brick)
-plot(r_brick$layer.1)
-pr <- r_brickcorrect
-pt <- cbind(c(100, 179), c(0, -55))
-plot(pr[[1688]])
-points(pt)
-
-cropextent <- extent(c(100, 179, -55, 0))
+  #setting wd where I want to save the "new" netcdf files
+  # setwd(outdir)
+  
+  writeRaster(b2, filename = paste0("D:/north_AUS_DATA/netcdf_data/subset/",outname),
+              format="CDF", varname=varname, varunit=varunits, longname=dlname,
+              xname="lon", yname="lat", zname="time", zunit=tunits, overwrite=TRUE)
+}
